@@ -1,39 +1,22 @@
-# import the Quix Streams modules for interacting with Kafka.
-# For general info, see https://quix.io/docs/quix-streams/introduction.html
-# For sources, see https://quix.io/docs/quix-streams/connectors/sources/index.html
-from quixstreams import Application
-from quixstreams.sources import Source
-
+import csv 
 import os
-
-# for local dev, you can load env vars from a .env file
+import glob
+import time
+import zstandard as zstd
+from io import TextIOWrapper
+from quixstreams.sources import Source
+from quixstreams import Application
 from dotenv import load_dotenv
+
 load_dotenv()
 
 
-class MemoryUsageGenerator(Source):
-    """
-    A Quix Streams Source enables Applications to read data from something other
-    than Kafka and publish it to a desired Kafka topic.
+class CSVStreamingSource(Source):
 
-    You provide a Source to an Application, which will handle the Source's lifecycle.
-
-    In this case, we have built a new Source that reads from a static set of
-    already loaded json data representing a server's memory usage over time.
-
-    There are numerous pre-built sources available to use out of the box; see:
-    https://quix.io/docs/quix-streams/connectors/sources/index.html
-    """
-
-    memory_allocation_data = [
-        {"m": "mem", "host": "host1", "used_percent": 64.56, "time": 1577836800000000000},
-        {"m": "mem", "host": "host2", "used_percent": 71.89, "time": 1577836801000000000},
-        {"m": "mem", "host": "host1", "used_percent": 63.27, "time": 1577836803000000000},
-        {"m": "mem", "host": "host2", "used_percent": 73.45, "time": 1577836804000000000},
-        {"m": "mem", "host": "host1", "used_percent": 62.98, "time": 1577836806000000000},
-        {"m": "mem", "host": "host2", "used_percent": 74.33, "time": 1577836808000000000},
-        {"m": "mem", "host": "host1", "used_percent": 65.21, "time": 1577836810000000000},
-    ]
+    def __init__(self, name, csv_folder, pattern= "*.zst"):
+        super().__init__(name=name)
+        self.csv_folder = csv_folder
+        self.pattern = pattern
 
     def run(self):
         """
@@ -45,41 +28,53 @@ class MemoryUsageGenerator(Source):
         There a few methods on a Source available for producing to Kafka, like
         `self.serialize` and `self.produce`.
         """
-        data = iter(self.memory_allocation_data)
-        # either break when the app is stopped, or data is exhausted
-        while self.running:
-            try:
-                event = next(data)
-                event_serialized = self.serialize(key=event["host"], value=event)
-                self.produce(key=event_serialized.key, value=event_serialized.value)
-                print("Source produced event successfully!")
-            except StopIteration:
-                print("Source finished producing messages.")
-                return
+        file_paths = glob.glob(f"{self.csv_folder}/{self.pattern}")
+        file_paths.sort()
+        print(f"Found {len(file_paths)} zipped CSV files to stream")
+
+        for path in file_paths:
+            print("Processing file:", path)
+            with open(path, 'rb') as compressed_file:
+                dctx = zstd.ZstdDecompressor()
+                stream_reader = dctx.stream_reader(compressed_file)
+                text_stream = TextIOWrapper(stream_reader,encoding='utf-8')
+
+                reader = csv.DictReader(text_stream)
+                for row in reader:
+                    if not self.running:
+                        return
+                    #Stream each row
+                    event_serialized = self.serialize(key=row.get("host", "default"), value=row)
+                    self.produce(key=event_serialized.key, value=event_serialized.value)
+                    print("Produced:", row)
+                    time.sleep(1)
+        print("All CSV files streamed")
+
+
 
 
 def main():
-    """ Here we will set up our Application. """
+    """Set up and run the Quix Application that streams CSV data."""
 
     # Setup necessary objects
-    app = Application(consumer_group="data_producer", auto_create_topics=True)
-    memory_usage_source = MemoryUsageGenerator(name="memory-usage-producer")
-    output_topic = app.topic(name=os.environ["output"])
+    csv_folder = os.environ.get("CSV_FOLDER", "data")
 
-    # --- Setup Source ---
-    # OPTION 1: no additional processing with a StreamingDataFrame
-    # Generally the recommended approach; no additional operations needed!
-    app.add_source(source=memory_usage_source, topic=output_topic)
+    # Create the Quix application
+    app = Application(consumer_group="csv-streamer-group", auto_create_topics=True)
 
-    # OPTION 2: additional processing with a StreamingDataFrame
-    # Useful for consolidating additional data cleanup into 1 Application.
-    # In this case, do NOT use `app.add_source()`.
-    # sdf = app.dataframe(source=source)
-    # <sdf operations here>
-    # sdf.to_topic(topic=output_topic) # you must do this to output your data!
+    # Define the output Kafka topic
+    output_topic_name = os.environ.get("OUTPUT_TOPIC", "csv-data")
+    output_topic = app.topic(output_topic_name)
 
-    # With our pipeline defined, now run the Application
+    # Create the CSV source
+    csv_source = CSVStreamingSource(name="csv-producer", csv_folder=csv_folder)
+
+    # Add the source to the app and bind it to the output topic
+    app.add_source(source=csv_source, topic=output_topic)
+
+    # Run the streaming application
     app.run()
+
 
 
 #  Sources require execution under a conditional main

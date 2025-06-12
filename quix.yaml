@@ -4,4 +4,24 @@
 metadata:
   version: 1.0
 
+# This section describes the Deployments of the data pipeline
+deployments:
+  - name: producer
+    application: producer
+    version: latest
+    deploymentType: Service
+    resources:
+      cpu: 200
+      memory: 800
+      replicas: 1
+    variables:
+      - name: OUTPUT_TOPIC
+        inputType: OutputTopic
+        value: stocks
+      - name: output
+        inputType: OutputTopic
+        value: stocks
 
+# This section describes the Topics of the data pipeline
+topics:
+  - name: stocks
