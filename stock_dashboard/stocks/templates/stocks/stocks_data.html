@@ -1,0 +1,37 @@
+<!-- templates/stocks/stocks_data.html -->
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Stock Data Dashboard</title>
+</head>
+<body>
+    <h1>📈 Stock Data</h1>
+
+    <form method="get">
+        <label>Start Date:</label>
+        <input type="date" name="start_date" value="{{ start_date }}">
+        <label>End Date:</label>
+        <input type="date" name="end_date" value="{{ end_date }}">
+        <button type="submit">Filter</button>
+    </form>
+
+    <table border="1">
+        <thead>
+            <tr>
+                {% for key in data.0.keys %}
+                    <th>{{ key }}</th>
+                {% endfor %}
+            </tr>
+        </thead>
+        <tbody>
+            {% for row in data %}
+                <tr>
+                    {% for val in row.values %}
+                        <td>{{ val }}</td>
+                    {% endfor %}
+                </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</body>
+</html>
