@@ -1,0 +1,15 @@
+name: consumer
+language: Python
+variables:
+  - name: input
+    inputType: InputTopic
+    description: Name of the input topic to listen to.
+    defaultValue: stocks
+  - name: output
+    inputType: OutputTopic
+    description: Name of the output topic to write to.
+    defaultValue: consume_to_s3
+dockerfile: dockerfile
+runEntryPoint: main.py
+defaultFile: main.py
+libraryItemId: starter-transformation

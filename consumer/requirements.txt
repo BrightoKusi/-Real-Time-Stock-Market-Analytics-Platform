@@ -1,0 +1,10 @@
+quixstreams==3.14.1
+python-dotenv
+boto3
+pandas
+pyarrow
+Django>=4.0
+
+
+
+
